@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="CodeRoom.Api.IntegrationTests/CodeRoom.Api.IntegrationTests.csproj" />
+  <Project Path="CodeRoom.Api/CodeRoom.Api.csproj" />
+</Solution>

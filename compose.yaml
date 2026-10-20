@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:18
+    container_name: coderoom-postgres
+    environment:
+      POSTGRES_DB: coderoom
+      POSTGRES_USER: coderoom
+      POSTGRES_PASSWORD: coderoom
+    ports:
+      - "5432:5432"
+    volumes:
+      - coderoom-postgres-data:/var/lib/postgresql
+
+volumes:
+  coderoom-postgres-data:
