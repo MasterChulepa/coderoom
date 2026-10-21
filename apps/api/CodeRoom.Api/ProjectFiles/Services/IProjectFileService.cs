@@ -8,5 +8,6 @@ public interface IProjectFileService
     Task<ProjectFileResponse?> GetProjectFileAsync(int projectId, int fileId, CancellationToken cancellationToken);
     Task<ProjectFileResponse?> CreateProjectFileAsync(int projectId, CreateProjectFileRequest request, CancellationToken cancellationToken);
     Task<ProjectFileResponse?> UpdateProjectFileAsync(int projectId, int fileId, UpdateProjectFileRequest request, CancellationToken cancellationToken);
+    Task<bool> DeleteProjectFileAsync(int projectId, int fileId, CancellationToken cancellationToken);
 }
 

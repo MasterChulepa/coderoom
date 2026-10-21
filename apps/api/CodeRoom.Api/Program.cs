@@ -4,6 +4,7 @@ using CodeRoom.Api.ProjectFiles.ExceptionHandlers;
 using CodeRoom.Api.Projects.ExceptionHandlers;
 using CodeRoom.Api.ProjectFiles.Services;
 using CodeRoom.Api.Projects.Services;
+using CodeRoom.Api.Collaboration;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -22,6 +23,7 @@ builder.Services.AddProblemDetails();
 builder.Services
     .AddExceptionHandler<ProjectAlreadyExistsExceptionHandler>()
     .AddExceptionHandler<ProjectFileAlreadyExistsExceptionHandler>();
+builder.Services.AddSignalR();
 
 var app = builder.Build();
 app.UseExceptionHandler();
@@ -37,6 +39,8 @@ app.UseHttpsRedirection();
 app.UseAuthorization();
 
 app.MapControllers();
+
+app.MapHub<ProjectHub>("/hubs/projects");
 
 app.Run();
 

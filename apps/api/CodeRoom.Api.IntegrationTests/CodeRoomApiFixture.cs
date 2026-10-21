@@ -1,4 +1,6 @@
+using CodeRoom.Api.Collaboration;
 using CodeRoom.Api.Data;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -13,6 +15,7 @@ public class CodeRoomApiFixture : IAsyncLifetime
 
     public HttpClient Client => _client ?? throw new InvalidOperationException("Client is not initialized. Ensure InitializeAsync has been called.");
 
+    public IHubContext<ProjectHub> HubContext => _factory?.Services.GetRequiredService<IHubContext<ProjectHub>>() ?? throw new InvalidOperationException("HubContext is not initialized. Ensure InitializeAsync has been called.");
     public string ConnectionString => _db.ConnectionString;
 
     public async Task InitializeAsync()

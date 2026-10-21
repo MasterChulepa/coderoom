@@ -8,6 +8,7 @@ using Microsoft.EntityFrameworkCore;
 using CodeRoom.Api.ProjectFiles.Services;
 using Microsoft.AspNetCore.Mvc;
 using System.Net;
+using Microsoft.Extensions.Logging.Abstractions;
 
 
 namespace CodeRoom.Api.IntegrationTests;
@@ -159,7 +160,7 @@ public class ProjectFilesApiTests(CodeRoomApiFixture apiFixture) : IClassFixture
             .Options;
 
         await using var creatingContext = new CodeRoomDbContext(options);
-        var projectFileService = new ProjectFileService(creatingContext);
+        var projectFileService = new ProjectFileService(creatingContext, apiFixture.HubContext, NullLogger<ProjectFileService>.Instance);
         var createdFile = await projectFileService.CreateProjectFileAsync(createdProject.Id, projectFileRequest, CancellationToken.None);
         Assert.Null(createdFile);
     }
@@ -195,6 +196,123 @@ public class ProjectFilesApiTests(CodeRoomApiFixture apiFixture) : IClassFixture
         Assert.NotNull(errorResponse);
         Assert.Equal((int)HttpStatusCode.Conflict, errorResponse.Status);
         Assert.Equal("project_file_path_conflict", errorResponse.Extensions["errorCode"]?.ToString());
+    }
+
+    [Fact]
+    public async Task UpdateProjectFile_ReturnsNotFound_WhenFileDoesNotExist()
+    {
+        // Arrange
+        var projectRequest = new CreateProjectRequest
+        {
+            Name = $"Test Project {Guid.NewGuid():N}"
+        };
+
+        using var createdProjectResponse = await apiFixture.Client.PostAsJsonAsync("api/projects", projectRequest);
+        var createdProject = await createdProjectResponse.Content.ReadFromJsonAsync<Project>();
+
+        Assert.NotNull(createdProject);
+        Assert.Equal(HttpStatusCode.Created, createdProjectResponse.StatusCode);
+
+        var updateRequest = new UpdateProjectFileRequest
+        {
+            Content = "This is an updated test file."
+        };
+
+        using var updatedProjectFileResponse = await apiFixture.Client.PutAsJsonAsync($"api/projects/{createdProject.Id}/files/{int.MaxValue}/content", updateRequest);
+        Assert.Equal(HttpStatusCode.NotFound, updatedProjectFileResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task UpdateProjectFile_ReturnsUpdatedFile_WhenFileExists()
+    {
+        // Arrange
+        var projectRequest = new CreateProjectRequest
+        {
+            Name = $"Test Project {Guid.NewGuid():N}"
+        };
+
+        using var createdProjectResponse = await apiFixture.Client.PostAsJsonAsync("api/projects", projectRequest);
+        var createdProject = await createdProjectResponse.Content.ReadFromJsonAsync<Project>();
+
+        Assert.NotNull(createdProject);
+        Assert.Equal(HttpStatusCode.Created, createdProjectResponse.StatusCode);
+
+        var projectFileRequest = new CreateProjectFileRequest
+        {
+            Path = $"test-file{Guid.NewGuid():N}.txt",
+            Content = "This is a test file."
+        };
+
+        using var createdProjectFileResponse = await apiFixture.Client.PostAsJsonAsync($"api/projects/{createdProject.Id}/files", projectFileRequest);
+        Assert.Equal(HttpStatusCode.Created, createdProjectFileResponse.StatusCode);
+
+        var createdProjectFile = await createdProjectFileResponse.Content.ReadFromJsonAsync<ProjectFileResponse>();
+        Assert.NotNull(createdProjectFile);
+
+        var updateRequest = new UpdateProjectFileRequest
+        {
+            Content = "This is an updated test file."
+        };
+
+        using var updatedProjectFileResponse = await apiFixture.Client.PutAsJsonAsync($"api/projects/{createdProject.Id}/files/{createdProjectFile.Id}/content", updateRequest);
+        Assert.Equal(HttpStatusCode.OK, updatedProjectFileResponse.StatusCode);
+
+        var updatedProjectFile = await updatedProjectFileResponse.Content.ReadFromJsonAsync<ProjectFileResponse>();
+        Assert.NotNull(updatedProjectFile);
+        Assert.Equal(updateRequest.Content, updatedProjectFile.Content);
+    }
+
+    [Fact]
+    public async Task DeleteProjectFile_ReturnsNotFound_WhenFileDoesNotExist()
+    {
+        // Arrange
+        var projectRequest = new CreateProjectRequest
+        {
+            Name = $"Test Project {Guid.NewGuid():N}"
+        };
+
+        using var createdProjectResponse = await apiFixture.Client.PostAsJsonAsync("api/projects", projectRequest);
+        var createdProject = await createdProjectResponse.Content.ReadFromJsonAsync<Project>();
+
+        Assert.NotNull(createdProject);
+        Assert.Equal(HttpStatusCode.Created, createdProjectResponse.StatusCode);
+
+        using var deleteProjectFileResponse = await apiFixture.Client.DeleteAsync($"api/projects/{createdProject.Id}/files/{int.MaxValue}");
+        Assert.Equal(HttpStatusCode.NotFound, deleteProjectFileResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteProjectFile_ReturnsNoContent_WhenFileExists()
+    {
+        // Arrange
+        var projectRequest = new CreateProjectRequest
+        {
+            Name = $"Test Project {Guid.NewGuid():N}"
+        };
+
+        using var createdProjectResponse = await apiFixture.Client.PostAsJsonAsync("api/projects", projectRequest);
+        var createdProject = await createdProjectResponse.Content.ReadFromJsonAsync<Project>();
+
+        Assert.NotNull(createdProject);
+        Assert.Equal(HttpStatusCode.Created, createdProjectResponse.StatusCode);
+
+        var projectFileRequest = new CreateProjectFileRequest
+        {
+            Path = $"test-file{Guid.NewGuid():N}.txt",
+            Content = "This is a test file."
+        };
+
+        using var createdProjectFileResponse = await apiFixture.Client.PostAsJsonAsync($"api/projects/{createdProject.Id}/files", projectFileRequest);
+        Assert.Equal(HttpStatusCode.Created, createdProjectFileResponse.StatusCode);
+
+        var createdProjectFile = await createdProjectFileResponse.Content.ReadFromJsonAsync<ProjectFileResponse>();
+        Assert.NotNull(createdProjectFile);
+
+        using var deleteProjectFileResponse = await apiFixture.Client.DeleteAsync($"api/projects/{createdProject.Id}/files/{createdProjectFile.Id}");
+        Assert.Equal(HttpStatusCode.NoContent, deleteProjectFileResponse.StatusCode);
+
+        using var getProjectFileResponse = await apiFixture.Client.GetAsync($"api/projects/{createdProject.Id}/files/{createdProjectFile.Id}");
+        Assert.Equal(HttpStatusCode.NotFound, getProjectFileResponse.StatusCode);
     }
 }
 

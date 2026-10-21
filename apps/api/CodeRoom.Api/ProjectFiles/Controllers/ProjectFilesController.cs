@@ -52,4 +52,17 @@ public class ProjectFilesController(IProjectFileService projectFileService) : Co
         return Ok(updatedProjectFile);
     }
 
+    [HttpDelete("{fileId:int}", Name = "DeleteProjectFile")]
+    public async Task<ActionResult> DeleteProjectFile([FromRoute] int projectId, [FromRoute] int fileId, CancellationToken cancellationToken)
+    {
+        var deleted = await projectFileService.DeleteProjectFileAsync(projectId, fileId, cancellationToken);
+
+        if (!deleted)
+        {
+            return NotFound();
+        }
+
+        return NoContent();
+    }
+
 }

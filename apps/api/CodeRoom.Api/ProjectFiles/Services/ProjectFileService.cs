@@ -3,10 +3,12 @@ using Microsoft.EntityFrameworkCore;
 using CodeRoom.Api.ProjectFiles.Dtos;
 using Npgsql;
 using CodeRoom.Api.ProjectFiles.Exceptions;
+using Microsoft.AspNetCore.SignalR;
+using CodeRoom.Api.Collaboration;
 
 namespace CodeRoom.Api.ProjectFiles.Services;
 
-public class ProjectFileService(CodeRoomDbContext _dbContext) : IProjectFileService
+public class ProjectFileService(CodeRoomDbContext _dbContext, IHubContext<ProjectHub> _hubContext, ILogger<ProjectFileService> _logger) : IProjectFileService
 {
     public async Task<ProjectFileResponse[]> GetProjectFilesAsync(int projectId, CancellationToken cancellationToken)
     {
@@ -97,6 +99,8 @@ public class ProjectFileService(CodeRoomDbContext _dbContext) : IProjectFileServ
             return null;
         }
 
+        await NotifyProjectFileUpdatedAsync(projectId, fileId);
+
         return new ProjectFileResponse
         {
             Id = projectFile.Id,
@@ -104,5 +108,46 @@ public class ProjectFileService(CodeRoomDbContext _dbContext) : IProjectFileServ
             Path = projectFile.Path,
             ProjectId = projectFile.ProjectId
         };
+
     }
+
+    private async Task NotifyProjectFileUpdatedAsync(int projectId, int fileId)
+    {
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(3));
+        try
+        {
+            await _hubContext.Clients.Group($"project:{projectId}").SendAsync("ProjectFileUpdated", new
+            {
+                ProjectId = projectId,
+                FileId = fileId,
+            }, cts.Token);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to notify clients about file {FileId} in project {ProjectId}", fileId, projectId);
+        }
+    }
+
+    public async Task<bool> DeleteProjectFileAsync(int projectId, int fileId, CancellationToken cancellationToken)
+    {
+        var projectFile = await _dbContext.ProjectFiles
+            .FirstOrDefaultAsync(pf => pf.ProjectId == projectId && pf.Id == fileId, cancellationToken);
+
+        if (projectFile is null)
+        {
+            return false;
+        }
+        _dbContext.ProjectFiles.Remove(projectFile);
+        try
+        {
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
 }
