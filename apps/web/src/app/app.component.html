@@ -1,0 +1,25 @@
+<main class="panel">
+  <h1>CodeRoom</h1>
+  <p>Подключение к совместному документу</p>
+
+  <form (ngSubmit)="connect()">
+    <label for="project-id">ID проекта</label>
+    <input id="project-id" name="projectId" type="number" min="1" step="1" required [(ngModel)]="projectId" [disabled]="connection.status() === 'connecting'" />
+
+    <label for="file-id">ID файла</label>
+    <input id="file-id" name="fileId" type="number" min="1" step="1" required [(ngModel)]="fileId" [disabled]="connection.status() === 'connecting'" />
+
+    <button type="submit" [disabled]="connection.status() === 'connecting' || !isValidId(projectId) || !isValidId(fileId)">
+      {{ connection.status() === 'connecting' ? 'Подключение…' : 'Подключиться' }}
+    </button>
+  </form>
+
+  <p>Состояние: {{ connection.status() }}</p>
+  @if (connection.error()) {
+    <p class="error" role="alert">{{ connection.error() }}</p>
+  }
+  @if (connection.status() === 'connected') {
+    <p>Обновлений в документе: {{ connection.initialUpdateCount() }}</p>
+    <p>Новых обновлений получено: {{ connection.receivedUpdateCount() }}</p>
+  }
+</main>

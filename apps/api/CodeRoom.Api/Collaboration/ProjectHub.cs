@@ -34,12 +34,12 @@ public class ProjectHub(CodeRoomDbContext _dbContext, ICollaborativeDocumentServ
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"project:{projectId}:file:{fileId}");
     }
 
-    public async Task<IReadOnlyList<byte[]>> GetCollaborativeDocumentUpdatesAsync(int projectId, int fileId, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<byte[]>> GetCollaborativeDocumentUpdatesAsync(int projectId, int fileId)
     {
         IReadOnlyList<byte[]> updates;
         try
         {
-            updates = await _collaborativeService.GetUpdatesAsync(projectId, fileId, cancellationToken);
+            updates = await _collaborativeService.GetUpdatesAsync(projectId, fileId, Context.ConnectionAborted);
         }
         catch (ProjectFileNotFoundException)
         {
@@ -49,11 +49,11 @@ public class ProjectHub(CodeRoomDbContext _dbContext, ICollaborativeDocumentServ
         return updates;
     }
 
-    public async Task UpdateCollaborativeDocumentAsync(int projectId, int fileId, Guid updateId, byte[] update, CancellationToken cancellationToken)
+    public async Task UpdateCollaborativeDocumentAsync(int projectId, int fileId, Guid updateId, byte[] update)
     {
         try
         {
-            await _collaborativeService.AppendUpdateAsync(projectId, fileId, updateId, update, cancellationToken);
+            await _collaborativeService.AppendUpdateAsync(projectId, fileId, updateId, update, Context.ConnectionAborted);
         }
         catch (ProjectFileNotFoundException)
         {
