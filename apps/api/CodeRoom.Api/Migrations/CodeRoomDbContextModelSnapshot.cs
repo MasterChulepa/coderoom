@@ -42,9 +42,13 @@ namespace CodeRoom.Api.Migrations
                         .IsRequired()
                         .HasColumnType("bytea");
 
+                    b.Property<Guid>("UpdateId")
+                        .HasColumnType("uuid");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("FileId");
+                    b.HasIndex("FileId", "UpdateId")
+                        .IsUnique();
 
                     b.ToTable("CollaborativeDocumentUpdates");
                 });

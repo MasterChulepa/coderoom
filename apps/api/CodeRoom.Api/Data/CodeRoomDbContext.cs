@@ -42,5 +42,8 @@ public class CodeRoomDbContext(DbContextOptions<CodeRoomDbContext> options) : Db
             .Property(u => u.CreatedAt)
             .HasDefaultValueSql("now()");
 
+        modelBuilder.Entity<CollaborativeDocumentUpdate>()
+            .HasIndex(u => new { u.FileId, u.UpdateId }).IsUnique();
+
     }
 }

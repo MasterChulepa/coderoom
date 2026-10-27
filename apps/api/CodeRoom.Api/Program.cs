@@ -5,6 +5,7 @@ using CodeRoom.Api.Projects.ExceptionHandlers;
 using CodeRoom.Api.ProjectFiles.Services;
 using CodeRoom.Api.Projects.Services;
 using CodeRoom.Api.Collaboration;
+using CodeRoom.Api.Collaboration.Services;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -14,6 +15,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddScoped<IProjectService, ProjectService>();
 builder.Services.AddScoped<IProjectFileService, ProjectFileService>();
+builder.Services.AddScoped<ICollaborativeDocumentService, CollaborativeDocumentService>();
 builder.Services.AddDbContext<CodeRoomDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 

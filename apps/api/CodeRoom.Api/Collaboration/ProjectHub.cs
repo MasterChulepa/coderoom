@@ -1,10 +1,13 @@
+using CodeRoom.Api.Collaboration.Exceptions;
+using CodeRoom.Api.Collaboration.Services;
 using CodeRoom.Api.Data;
+using CodeRoom.Api.ProjectFiles.Exceptions;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
 namespace CodeRoom.Api.Collaboration;
 
-public class ProjectHub(CodeRoomDbContext _dbContext) : Hub
+public class ProjectHub(CodeRoomDbContext _dbContext, ICollaborativeDocumentService _collaborativeService, ILogger<ProjectHub> _logger) : Hub
 {
     public async Task JoinProject(int projectId)
     {
@@ -29,5 +32,49 @@ public class ProjectHub(CodeRoomDbContext _dbContext) : Hub
     public async Task LeaveFile(int projectId, int fileId)
     {
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, $"project:{projectId}:file:{fileId}");
+    }
+
+    public async Task<IReadOnlyList<byte[]>> GetCollaborativeDocumentUpdatesAsync(int projectId, int fileId, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<byte[]> updates;
+        try
+        {
+            updates = await _collaborativeService.GetUpdatesAsync(projectId, fileId, cancellationToken);
+        }
+        catch (ProjectFileNotFoundException)
+        {
+            throw new HubException($"Can't receive updates for file with id {fileId}");
+        }
+
+        return updates;
+    }
+
+    public async Task UpdateCollaborativeDocumentAsync(int projectId, int fileId, Guid updateId, byte[] update, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _collaborativeService.AppendUpdateAsync(projectId, fileId, updateId, update, cancellationToken);
+        }
+        catch (ProjectFileNotFoundException)
+        {
+            throw new HubException($"Can't update file with id {fileId}");
+        }
+        catch (ConflictWhileSavingUpdateException ex)
+        {
+            throw new HubException(ex.Message);
+        }
+        catch (InvalidUpdateIdException ex)
+        {
+            throw new HubException(ex.Message);
+        }
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(3));
+        try
+        {
+            await Clients.OthersInGroup($"project:{projectId}:file:{fileId}").SendAsync("DocumentUpdateReceived", projectId, fileId, update, cts.Token);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to notify clients about file {FileId} update in project {ProjectId}", fileId, projectId);
+        }
     }
 }
