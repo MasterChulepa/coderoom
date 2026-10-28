@@ -21,5 +21,9 @@
   @if (connection.status() === 'connected') {
     <p>Обновлений в документе: {{ connection.initialUpdateCount() }}</p>
     <p>Новых обновлений получено: {{ connection.receivedUpdateCount() }}</p>
+    <label for="document-content">Содержимое файла</label>
+    <textarea id="document-content" class="document-content" rows="10"
+      [ngModel]="connection.documentContent()" (ngModelChange)="connection.updateText($event)"
+      [ngModelOptions]="{standalone: true}"></textarea>
   }
 </main>

@@ -3,3 +3,4 @@ form { display: grid; gap: .5rem; }
 input, button { font: inherit; padding: .6rem; }
 button { margin-top: .5rem; cursor: pointer; }
 .error { color: #b42318; }
+.document-content { display: block; box-sizing: border-box; width: 100%; min-height: 10rem; margin-top: .5rem; padding: 1rem; font: inherit; resize: vertical; }

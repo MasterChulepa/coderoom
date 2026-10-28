@@ -10,4 +10,4 @@
 
 Angular dev server проксирует `/hubs` на API через `proxy.conf.json`, включая WebSocket. Если API слушает другой адрес, измените `target` в этом файле.
 
-Клиент подписывается на `DocumentUpdateReceived` до запуска соединения, затем вызывает `JoinFile(projectId, fileId)` и `GetCollaborativeDocumentUpdatesAsync(projectId, fileId)`. Для пустого файла результат `[]`, счётчик исходных обновлений равен 0. Новые события считаются отдельно. Пока содержимое обновлений не применяется к Yjs.
+Клиент подписывается на `DocumentUpdateReceived` до запуска соединения, затем вызывает `JoinFile(projectId, fileId)` и `GetCollaborativeDocumentUpdatesAsync(projectId, fileId)`. Для пустого файла результат `[]`, счётчик исходных обновлений равен 0. Обновления из истории и событий декодируются из Base64 и применяются к `Y.Doc`; текст хранится в `Y.Text` с ключом `content`. `text.observe` обновляет поле редактирования, а `document.on('update')` отправляет только локальные изменения через `UpdateCollaborativeDocumentAsync`. Новые события считаются отдельно.
