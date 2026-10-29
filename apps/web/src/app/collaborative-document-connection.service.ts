@@ -82,8 +82,8 @@ export class CollaborativeDocumentConnectionService {
   }
 
   private subscribeToLocalUpdates(document: Y.Doc, connection: HubConnection, projectId: number, fileId: number): void {
-    document.on('update', (update: Uint8Array, origin: unknown) => {
-      if (origin !== this.localEditOrigin || this.connection !== connection) return;
+    document.on('update', (update: Uint8Array, _origin: unknown, _doc: Y.Doc, transaction: Y.Transaction) => {
+      if (!transaction.local || this.connection !== connection) return;
 
       const updateId = crypto.randomUUID();
       const base64 = this.encodeUpdate(update);

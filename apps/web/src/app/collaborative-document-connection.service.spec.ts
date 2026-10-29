@@ -4,6 +4,40 @@ import * as Y from 'yjs';
 import { CollaborativeDocumentConnectionService } from './collaborative-document-connection.service';
 
 describe('CollaborativeDocumentConnectionService', () => {
+  it('sends Monaco edits and applies remote changes without echoing them', async () => {
+    const monaco = await import('monaco-editor/esm/vs/editor/editor.api');
+    const { MonacoBinding } = await import('y-monaco');
+    const handlers = new Map<string, (...args: unknown[]) => void>();
+    const connection = {
+      on: jasmine.createSpy('on').and.callFake((name: string, handler: (...args: unknown[]) => void) => handlers.set(name, handler)),
+      onclose: jasmine.createSpy('onclose'),
+      start: jasmine.createSpy('start').and.resolveTo(),
+      invoke: jasmine.createSpy('invoke').and.callFake((method: string) =>
+        Promise.resolve(method === 'GetCollaborativeDocumentUpdatesAsync' ? [] : undefined)),
+      stop: jasmine.createSpy('stop').and.resolveTo(),
+    };
+    spyOn(HubConnectionBuilder.prototype, 'build').and.returnValue(connection as unknown as HubConnection);
+    const service = TestBed.inject(CollaborativeDocumentConnectionService);
+    await service.connect(1, 2);
+    const model = monaco.editor.createModel('');
+    const binding = new MonacoBinding(service.text!, model);
+    model.setValue('local');
+    expect(service.text?.toString()).toBe('local');
+    expect(connection.invoke.calls.mostRecent().args[0]).toBe('UpdateCollaborativeDocumentAsync');
+    const count = connection.invoke.calls.count();
+    const remote = new Y.Doc();
+    remote.getText('content').insert(0, 'remote');
+    const update = btoa(String.fromCharCode(...Y.encodeStateAsUpdate(remote)));
+    handlers.get('DocumentUpdateReceived')?.(1, 2, update);
+    expect(model.getValue()).toBe(service.text!.toString());
+    expect(model.getValue()).toContain('remote');
+    expect(connection.invoke.calls.count()).toBe(count);
+    binding.destroy();
+    model.dispose();
+    remote.destroy();
+    await service.disconnect();
+  });
+
   it('restores remote updates without echoing them and sends a local text update', async () => {
     const source = new Y.Doc();
     const sourceText = source.getText('content');
