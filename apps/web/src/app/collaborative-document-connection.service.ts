@@ -3,6 +3,17 @@ import { HubConnection, HubConnectionBuilder } from '@microsoft/signalr';
 import * as Y from 'yjs';
 
 const BASE64_ENCODING_CHUNK_SIZE = 8192;
+const PENDING_RETRY_INTERVAL_MS = 5000;
+const MAX_UPDATE_SEND_ATTEMPTS = 3;
+
+type PendingUpdate = {
+  projectId: number;
+  fileId: number;
+  updateId: string;
+  base64: string;
+  attempts: number;
+  status: 'queued' | 'sending' | 'needsAttention';
+};
 
 @Injectable({ providedIn: 'root' })
 export class CollaborativeDocumentConnectionService {
@@ -14,12 +25,16 @@ export class CollaborativeDocumentConnectionService {
 
   document: Y.Doc | null = null;
   text: Y.Text | null = null;
+  readonly pendingUpdates = new Map<string, PendingUpdate>();
 
   private readonly zone = inject(NgZone);
   private readonly localEditOrigin = Symbol('local-edit');
   private readonly remoteUpdateOrigin = Symbol('remote-update');
   private connection: HubConnection | null = null;
+  private readonly inFlightUpdates = new Map<string, HubConnection>();
   private connecting = false;
+  private retryTimer: ReturnType<typeof setInterval> | null = null;
+  private idleRetry: number | null = null;
 
   async connect(projectId: number, fileId: number): Promise<void> {
     if (this.connecting) return;
@@ -27,85 +42,186 @@ export class CollaborativeDocumentConnectionService {
 
     try {
       await this.disconnect();
-      this.status.set('connecting');
-      this.error.set(null);
-      this.initialUpdateCount.set(0);
-      this.receivedUpdateCount.set(0);
-
-      const document = new Y.Doc();
-      const text = document.getText('content');
-      text.observe(() => this.zone.run(() => this.documentContent.set(text.toString())));
-      this.document = document;
-      this.text = text;
-
-      const connection = new HubConnectionBuilder().withUrl('/hubs/projects').build();
-      this.connection = connection;
-
-      document.on('update', (update: Uint8Array, origin: unknown) => {
-        if (origin !== this.localEditOrigin || this.connection !== connection) return;
-
-        const updateId = crypto.randomUUID();
-        const base64 = this.encodeUpdate(update);
-        void connection.invoke('UpdateCollaborativeDocumentAsync', projectId, fileId, updateId, base64)
-          .catch(error => this.zone.run(() => {
-            this.error.set(`Не удалось отправить правку: ${error instanceof Error ? error.message : String(error)}`);
-          }));
-      });
-
-      // Subscribe before starting, so updates arriving after JoinFile are observed.
-      connection.on('DocumentUpdateReceived', (updatedProjectId: number, updatedFileId: number, update: string) => {
-        if (this.connection !== connection || updatedProjectId !== projectId || updatedFileId !== fileId) return;
-
-        this.zone.run(() => {
-          try {
-            this.applyUpdate(document, update);
-            this.receivedUpdateCount.update(count => count + 1);
-          } catch (error) {
-            this.error.set(error instanceof Error ? error.message : String(error));
-          }
-        });
-      });
-
-      connection.onclose(error => {
-        if (this.connection === connection) {
-          this.zone.run(() => {
-            this.connection = null;
-            this.resetDocument();
-            this.status.set('disconnected');
-            if (error) this.error.set(error.message);
-          });
-        }
-      });
+      this.prepareConnectionState();
+      const document = this.createDocument();
+      const connection = this.createHubConnection();
+      this.subscribeToLocalUpdates(document, connection, projectId, fileId);
+      this.subscribeToRemoteUpdates(document, connection, projectId, fileId);
+      this.subscribeToConnectionClose(connection);
 
       try {
-        await connection.start();
-        if (this.connection !== connection) return;
-        await connection.invoke('JoinFile', projectId, fileId);
-        if (this.connection !== connection) return;
-        const updates = await connection.invoke<string[]>('GetCollaborativeDocumentUpdatesAsync', projectId, fileId);
-        if (this.connection !== connection) return;
-        for (const update of updates) this.applyUpdate(document, update);
-        this.initialUpdateCount.set(updates.length); // An empty document returns [].
-        this.status.set('connected');
-        console.info(`CodeRoom: received ${updates.length} existing updates for file ${fileId}.`);
+        await this.startConnectionAndRestoreDocument(document, connection, projectId, fileId);
       } catch (error) {
-        this.error.set(error instanceof Error ? error.message : String(error));
-        this.status.set('disconnected');
-        this.connection = null;
-        this.resetDocument();
-        await connection.stop();
+        await this.handleConnectionFailure(connection, error);
       }
     } finally {
       this.connecting = false;
     }
   }
 
+  private prepareConnectionState(): void {
+    this.status.set('connecting');
+    this.error.set(null);
+    this.initialUpdateCount.set(0);
+    this.receivedUpdateCount.set(0);
+  }
+
+  private createDocument(): Y.Doc {
+    const document = new Y.Doc();
+    const text = document.getText('content');
+    text.observe(() => this.zone.run(() => this.documentContent.set(text.toString())));
+    this.document = document;
+    this.text = text;
+    return document;
+  }
+
+  private createHubConnection(): HubConnection {
+    const connection = new HubConnectionBuilder().withUrl('/hubs/projects').build();
+    this.connection = connection;
+    return connection;
+  }
+
+  private subscribeToLocalUpdates(document: Y.Doc, connection: HubConnection, projectId: number, fileId: number): void {
+    document.on('update', (update: Uint8Array, origin: unknown) => {
+      if (origin !== this.localEditOrigin || this.connection !== connection) return;
+
+      const updateId = crypto.randomUUID();
+      const base64 = this.encodeUpdate(update);
+      const pendingUpdate: PendingUpdate = { projectId, fileId, updateId, base64, attempts: 0, status: 'queued' };
+      this.pendingUpdates.set(updateId, pendingUpdate);
+      void this.sendPendingUpdate(connection, pendingUpdate);
+    });
+  }
+
+  private async sendPendingUpdate(connection: HubConnection, pendingUpdate: PendingUpdate): Promise<void> {
+    const { projectId, fileId, updateId, base64 } = pendingUpdate;
+    if (this.connection !== connection || this.inFlightUpdates.get(updateId) === connection ||
+      this.pendingUpdates.get(updateId) !== pendingUpdate || pendingUpdate.status === 'needsAttention') return;
+    if (pendingUpdate.attempts >= MAX_UPDATE_SEND_ATTEMPTS) {
+      pendingUpdate.status = 'needsAttention';
+      return;
+    }
+
+    this.inFlightUpdates.set(updateId, connection);
+    pendingUpdate.attempts++;
+    pendingUpdate.status = 'sending';
+    try {
+      await connection.invoke('UpdateCollaborativeDocumentAsync', projectId, fileId, updateId, base64);
+      if (this.pendingUpdates.get(updateId) === pendingUpdate) this.pendingUpdates.delete(updateId);
+    } catch (error) {
+      if (this.pendingUpdates.get(updateId) === pendingUpdate && this.inFlightUpdates.get(updateId) === connection) {
+        pendingUpdate.status = pendingUpdate.attempts >= MAX_UPDATE_SEND_ATTEMPTS ? 'needsAttention' : 'queued';
+      }
+      if (this.connection === connection && pendingUpdate.status === 'needsAttention') {
+        this.zone.run(() => {
+          this.error.set(`Не удалось отправить правку после ${MAX_UPDATE_SEND_ATTEMPTS} попыток: ${error instanceof Error ? error.message : String(error)}`);
+        });
+      }
+    } finally {
+      if (this.inFlightUpdates.get(updateId) === connection) this.inFlightUpdates.delete(updateId);
+    }
+  }
+
+  private subscribeToRemoteUpdates(document: Y.Doc, connection: HubConnection, projectId: number, fileId: number): void {
+    // Subscribe before starting, so updates arriving after JoinFile are observed.
+    connection.on('DocumentUpdateReceived', (updatedProjectId: number, updatedFileId: number, update: string) => {
+      if (this.connection !== connection || updatedProjectId !== projectId || updatedFileId !== fileId) return;
+
+      this.zone.run(() => {
+        try {
+          this.applyUpdate(document, update);
+          this.receivedUpdateCount.update(count => count + 1);
+        } catch (error) {
+          this.error.set(error instanceof Error ? error.message : String(error));
+        }
+      });
+    });
+  }
+
+  private subscribeToConnectionClose(connection: HubConnection): void {
+    connection.onclose(error => {
+      if (this.connection === connection) {
+        this.zone.run(() => {
+          this.stopPendingRetries();
+          this.releaseInFlightUpdates(connection);
+          this.connection = null;
+          this.resetDocument();
+          this.status.set('disconnected');
+          if (error) this.error.set(error.message);
+        });
+      }
+    });
+  }
+
+  private async startConnectionAndRestoreDocument(document: Y.Doc, connection: HubConnection, projectId: number, fileId: number): Promise<void> {
+    await connection.start();
+    if (this.connection !== connection) return;
+    await connection.invoke('JoinFile', projectId, fileId);
+    if (this.connection !== connection) return;
+    const updates = await connection.invoke<string[]>('GetCollaborativeDocumentUpdatesAsync', projectId, fileId);
+    if (this.connection !== connection) return;
+    for (const update of updates) this.applyUpdate(document, update);
+    const pendingForFile = [...this.pendingUpdates.values()].filter(
+      update => update.projectId === projectId && update.fileId === fileId,
+    );
+    for (const update of pendingForFile) this.applyUpdate(document, update.base64);
+    this.initialUpdateCount.set(updates.length); // An empty document returns [].
+    this.status.set('connected');
+    for (const update of pendingForFile) void this.sendPendingUpdate(connection, update);
+    this.startPendingRetries(connection);
+    console.info(`CodeRoom: received ${updates.length} existing updates for file ${fileId}.`);
+  }
+
+  private async handleConnectionFailure(connection: HubConnection, error: unknown): Promise<void> {
+    this.error.set(error instanceof Error ? error.message : String(error));
+    this.status.set('disconnected');
+    this.connection = null;
+    this.resetDocument();
+    await connection.stop();
+  }
+
   async disconnect(): Promise<void> {
     const connection = this.connection;
+    this.stopPendingRetries();
+    if (connection) this.releaseInFlightUpdates(connection);
     this.connection = null;
     this.resetDocument();
     this.status.set('disconnected');
     if (connection) await connection.stop();
+  }
+
+  private releaseInFlightUpdates(connection: HubConnection): void {
+    for (const pendingUpdate of this.pendingUpdates.values()) {
+      if (this.inFlightUpdates.get(pendingUpdate.updateId) !== connection) continue;
+      this.inFlightUpdates.delete(pendingUpdate.updateId);
+      pendingUpdate.status = pendingUpdate.attempts >= MAX_UPDATE_SEND_ATTEMPTS ? 'needsAttention' : 'queued';
+    }
+  }
+
+  private startPendingRetries(connection: HubConnection): void {
+    this.stopPendingRetries();
+    this.zone.runOutsideAngular(() => {
+      this.retryTimer = setInterval(() => {
+        if (this.idleRetry !== null) return;
+        const retry = () => {
+          this.idleRetry = null;
+          if (this.connection !== connection || this.status() !== 'connected') return;
+          for (const update of this.pendingUpdates.values()) void this.sendPendingUpdate(connection, update);
+        };
+        if (typeof window.requestIdleCallback === 'function') {
+          this.idleRetry = window.requestIdleCallback(retry, { timeout: PENDING_RETRY_INTERVAL_MS });
+        } else {
+          retry();
+        }
+      }, PENDING_RETRY_INTERVAL_MS);
+    });
+  }
+
+  private stopPendingRetries(): void {
+    if (this.retryTimer !== null) clearInterval(this.retryTimer);
+    this.retryTimer = null;
+    if (this.idleRetry !== null) window.cancelIdleCallback(this.idleRetry);
+    this.idleRetry = null;
   }
 
   updateText(nextContent: string): void {
