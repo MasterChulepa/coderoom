@@ -19,7 +19,29 @@
   </header>
 
   <aside class="explorer" aria-labelledby="explorer-title">
-    <h2 id="explorer-title" class="explorer-title">Файлы</h2>
+    <div class="mb-1 flex flex-wrap items-center justify-between gap-2">
+      <h2 id="explorer-title" class="explorer-title">Файлы</h2>
+      <button
+        #newFileButton
+        hlmBtn
+        variant="outline"
+        size="sm"
+        type="button"
+        [attr.aria-expanded]="createFileState() !== null"
+        [disabled]="projectId() === null || loadingFiles() || filesError() !== null || !!createFileState()?.submitting"
+        (click)="toggleCreateFile()"
+      >
+        Новый файл
+      </button>
+    </div>
+    @if (createFileState(); as state) {
+      <app-create-file-form
+        [submitting]="state.submitting"
+        [error]="state.error"
+        (createRequested)="createFile($event)"
+        (cancelled)="toggleCreateFile(); newFileButton.focus()"
+      />
+    }
     @if (loadingFiles()) {
       <p class="panel-message" role="status">Загрузка файлов…</p>
     } @else if (filesError(); as error) {

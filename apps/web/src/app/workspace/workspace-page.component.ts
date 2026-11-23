@@ -1,4 +1,5 @@
-import { Component, OnDestroy, inject, signal } from '@angular/core';
+import { HttpErrorResponse } from '@angular/common/http';
+import { Component, DestroyRef, OnDestroy, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { catchError, distinctUntilChanged, map, of, switchMap } from 'rxjs';
@@ -6,6 +7,7 @@ import { HlmButton } from '@spartan-ng/helm/button';
 import { ProjectFilesClient, type ProjectFileDto } from '../api/files/project-files.client';
 import { CollaborativeDocumentConnectionService } from './collaboration/collaborative-document-connection.service';
 import { CollaborativeEditorComponent } from './editor/collaborative-editor.component';
+import { CreateFileFormComponent } from './files/create-file-form.component';
 import { FileTreeComponent } from './files/file-tree.component';
 
 interface FileSelection {
@@ -13,9 +15,14 @@ interface FileSelection {
   file: ProjectFileDto;
 }
 
+interface CreateFileState {
+  readonly submitting: boolean;
+  readonly error: string | null;
+}
+
 @Component({
   selector: 'app-workspace-page',
-  imports: [CollaborativeEditorComponent, FileTreeComponent, HlmButton],
+  imports: [CollaborativeEditorComponent, CreateFileFormComponent, FileTreeComponent, HlmButton],
   templateUrl: './workspace-page.component.html',
   styleUrl: './workspace-page.component.css',
 })
@@ -23,6 +30,7 @@ export class WorkspacePageComponent implements OnDestroy {
   protected readonly connection = inject(CollaborativeDocumentConnectionService);
   private readonly filesClient = inject(ProjectFilesClient);
   private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
   protected readonly projectId = signal<number | null>(null);
   protected readonly files = signal<readonly ProjectFileDto[]>([]);
   protected readonly loadingFiles = signal(false);
@@ -31,6 +39,7 @@ export class WorkspacePageComponent implements OnDestroy {
   protected readonly opened = signal<FileSelection | null>(null);
   protected readonly switchingFile = signal(false);
   protected readonly fileError = signal<string | null>(null);
+  protected readonly createFileState = signal<CreateFileState | null>(null);
 
   constructor() {
     inject(ActivatedRoute).paramMap.pipe(
@@ -40,6 +49,7 @@ export class WorkspacePageComponent implements OnDestroy {
         this.projectId.set(this.isValidId(projectId) ? projectId : null);
         this.files.set([]);
         this.filesError.set(null);
+        this.createFileState.set(null);
         this.selection.set(null);
         if (this.opened() || this.switchingFile()) void this.switchDocument();
 
@@ -62,6 +72,36 @@ export class WorkspacePageComponent implements OnDestroy {
 
   protected openProject(projectId: number): void {
     if (this.isValidId(projectId)) void this.router.navigate(['/projects', projectId]);
+  }
+
+  protected toggleCreateFile(): void {
+    if (this.createFileState()?.submitting || this.loadingFiles() || this.projectId() === null) return;
+    this.createFileState.update(state => state ? null : { submitting: false, error: null });
+  }
+
+  protected createFile(name: string): void {
+    const projectId = this.projectId();
+    const state = this.createFileState();
+    if (projectId === null || !state || state.submitting) return;
+
+    const request: CreateFileState = { submitting: true, error: null };
+    this.createFileState.set(request);
+    this.filesClient.create(projectId, name).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: file => {
+        if (this.createFileState() !== request) return;
+        this.files.update(files => files.some(entry => entry.id === file.id) ? files : [...files, file]);
+        this.createFileState.set(null);
+      },
+      error: (error: unknown) => {
+        if (this.createFileState() !== request) return;
+        let message = 'Не удалось создать файл. Попробуй ещё раз.';
+        if (error instanceof HttpErrorResponse) {
+          if (error.status === 409) message = 'Файл с таким именем уже существует.';
+          if (error.status === 404) message = 'Проект не найден.';
+        }
+        this.createFileState.set({ submitting: false, error: message });
+      },
+    });
   }
 
   protected selectFile(fileId: number): void {
