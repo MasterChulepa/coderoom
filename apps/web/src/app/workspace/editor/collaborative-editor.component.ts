@@ -7,7 +7,7 @@ import type * as Y from 'yjs';
   selector: 'app-collaborative-editor',
   template: '<div #container class="editor" aria-label="Содержимое файла"></div>',
   changeDetection: ChangeDetectionStrategy.Eager,
-  styles: ['.editor { width: 100%; height: 400px; border: 1px solid #ccc; }'],
+  styles: [':host, .editor { display: block; width: 100%; height: 100%; min-height: 0; }'],
 })
 export class CollaborativeEditorComponent implements AfterViewInit, OnDestroy {
   @Input({ required: true }) text!: Y.Text;

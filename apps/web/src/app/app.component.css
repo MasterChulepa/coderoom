@@ -1,6 +1,0 @@
-.panel { max-width: 28rem; margin: 4rem auto; padding: 2rem; background: white; border-radius: .75rem; box-shadow: 0 8px 30px #0001; }
-form { display: grid; gap: .5rem; }
-input, button { font: inherit; padding: .6rem; }
-button { margin-top: .5rem; cursor: pointer; }
-.error { color: #b42318; }
-.document-content { display: block; box-sizing: border-box; width: 100%; min-height: 10rem; margin-top: .5rem; padding: 1rem; font: inherit; resize: vertical; }

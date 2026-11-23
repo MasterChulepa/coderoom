@@ -1,16 +1,13 @@
 import { Injectable, NgZone, inject, signal } from '@angular/core';
-import { HubConnection, HubConnectionBuilder } from '@microsoft/signalr';
 import * as Y from 'yjs';
+import type { DocumentUpdatePayload } from '../../api/collaboration/collaboration.dto';
+import { ProjectHubClient } from '../../api/collaboration/project-hub.client';
 
 const BASE64_ENCODING_CHUNK_SIZE = 8192;
 const PENDING_RETRY_INTERVAL_MS = 5000;
 const MAX_UPDATE_SEND_ATTEMPTS = 3;
 
-type PendingUpdate = {
-  projectId: number;
-  fileId: number;
-  updateId: string;
-  base64: string;
+type PendingUpdate = DocumentUpdatePayload & {
   attempts: number;
   status: 'queued' | 'sending' | 'needsAttention';
 };
@@ -30,8 +27,8 @@ export class CollaborativeDocumentConnectionService {
   private readonly zone = inject(NgZone);
   private readonly localEditOrigin = Symbol('local-edit');
   private readonly remoteUpdateOrigin = Symbol('remote-update');
-  private connection: HubConnection | null = null;
-  private readonly inFlightUpdates = new Map<string, HubConnection>();
+  private connection: ProjectHubClient | null = null;
+  private readonly inFlightUpdates = new Map<string, ProjectHubClient>();
   private connecting = false;
   private retryTimer: ReturnType<typeof setInterval> | null = null;
   private idleRetry: number | null = null;
@@ -75,13 +72,13 @@ export class CollaborativeDocumentConnectionService {
     return document;
   }
 
-  private createHubConnection(): HubConnection {
-    const connection = new HubConnectionBuilder().withUrl('/hubs/projects').build();
+  private createHubConnection(): ProjectHubClient {
+    const connection = new ProjectHubClient();
     this.connection = connection;
     return connection;
   }
 
-  private subscribeToLocalUpdates(document: Y.Doc, connection: HubConnection, projectId: number, fileId: number): void {
+  private subscribeToLocalUpdates(document: Y.Doc, connection: ProjectHubClient, projectId: number, fileId: number): void {
     document.on('update', (update: Uint8Array, _origin: unknown, _doc: Y.Doc, transaction: Y.Transaction) => {
       if (!transaction.local || this.connection !== connection) return;
 
@@ -93,8 +90,8 @@ export class CollaborativeDocumentConnectionService {
     });
   }
 
-  private async sendPendingUpdate(connection: HubConnection, pendingUpdate: PendingUpdate): Promise<void> {
-    const { projectId, fileId, updateId, base64 } = pendingUpdate;
+  private async sendPendingUpdate(connection: ProjectHubClient, pendingUpdate: PendingUpdate): Promise<void> {
+    const { updateId } = pendingUpdate;
     if (this.connection !== connection || this.inFlightUpdates.get(updateId) === connection ||
       this.pendingUpdates.get(updateId) !== pendingUpdate || pendingUpdate.status === 'needsAttention') return;
     if (pendingUpdate.attempts >= MAX_UPDATE_SEND_ATTEMPTS) {
@@ -106,7 +103,7 @@ export class CollaborativeDocumentConnectionService {
     pendingUpdate.attempts++;
     pendingUpdate.status = 'sending';
     try {
-      await connection.invoke('UpdateCollaborativeDocumentAsync', projectId, fileId, updateId, base64);
+      await connection.sendDocumentUpdate(pendingUpdate);
       if (this.pendingUpdates.get(updateId) === pendingUpdate) this.pendingUpdates.delete(updateId);
     } catch (error) {
       if (this.pendingUpdates.get(updateId) === pendingUpdate && this.inFlightUpdates.get(updateId) === connection) {
@@ -122,9 +119,9 @@ export class CollaborativeDocumentConnectionService {
     }
   }
 
-  private subscribeToRemoteUpdates(document: Y.Doc, connection: HubConnection, projectId: number, fileId: number): void {
+  private subscribeToRemoteUpdates(document: Y.Doc, connection: ProjectHubClient, projectId: number, fileId: number): void {
     // Subscribe before starting, so updates arriving after JoinFile are observed.
-    connection.on('DocumentUpdateReceived', (updatedProjectId: number, updatedFileId: number, update: string) => {
+    connection.onDocumentUpdate((updatedProjectId, updatedFileId, update) => {
       if (this.connection !== connection || updatedProjectId !== projectId || updatedFileId !== fileId) return;
 
       this.zone.run(() => {
@@ -138,8 +135,8 @@ export class CollaborativeDocumentConnectionService {
     });
   }
 
-  private subscribeToConnectionClose(connection: HubConnection): void {
-    connection.onclose(error => {
+  private subscribeToConnectionClose(connection: ProjectHubClient): void {
+    connection.onClose(error => {
       if (this.connection === connection) {
         this.zone.run(() => {
           this.stopPendingRetries();
@@ -153,12 +150,12 @@ export class CollaborativeDocumentConnectionService {
     });
   }
 
-  private async startConnectionAndRestoreDocument(document: Y.Doc, connection: HubConnection, projectId: number, fileId: number): Promise<void> {
+  private async startConnectionAndRestoreDocument(document: Y.Doc, connection: ProjectHubClient, projectId: number, fileId: number): Promise<void> {
     await connection.start();
     if (this.connection !== connection) return;
-    await connection.invoke('JoinFile', projectId, fileId);
+    await connection.joinFile(projectId, fileId);
     if (this.connection !== connection) return;
-    const updates = await connection.invoke<string[]>('GetCollaborativeDocumentUpdatesAsync', projectId, fileId);
+    const updates = await connection.getDocumentUpdates(projectId, fileId);
     if (this.connection !== connection) return;
     for (const update of updates) this.applyUpdate(document, update);
     const pendingForFile = [...this.pendingUpdates.values()].filter(
@@ -172,7 +169,7 @@ export class CollaborativeDocumentConnectionService {
     console.info(`CodeRoom: received ${updates.length} existing updates for file ${fileId}.`);
   }
 
-  private async handleConnectionFailure(connection: HubConnection, error: unknown): Promise<void> {
+  private async handleConnectionFailure(connection: ProjectHubClient, error: unknown): Promise<void> {
     this.error.set(error instanceof Error ? error.message : String(error));
     this.status.set('disconnected');
     this.connection = null;
@@ -190,7 +187,7 @@ export class CollaborativeDocumentConnectionService {
     if (connection) await connection.stop();
   }
 
-  private releaseInFlightUpdates(connection: HubConnection): void {
+  private releaseInFlightUpdates(connection: ProjectHubClient): void {
     for (const pendingUpdate of this.pendingUpdates.values()) {
       if (this.inFlightUpdates.get(pendingUpdate.updateId) !== connection) continue;
       this.inFlightUpdates.delete(pendingUpdate.updateId);
@@ -198,7 +195,7 @@ export class CollaborativeDocumentConnectionService {
     }
   }
 
-  private startPendingRetries(connection: HubConnection): void {
+  private startPendingRetries(connection: ProjectHubClient): void {
     this.stopPendingRetries();
     this.zone.runOutsideAngular(() => {
       this.retryTimer = setInterval(() => {

@@ -1,0 +1,24 @@
+<ul class="m-0 list-none p-0" role="tree" [attr.aria-label]="label()">
+  @for (row of rows(); track row.node.id; let index = $index) {
+    <li
+      #item
+      [class]="rowClass"
+      role="treeitem"
+      [attr.aria-level]="row.level"
+      [attr.aria-posinset]="row.position"
+      [attr.aria-setsize]="row.siblingCount"
+      [attr.aria-expanded]="row.hasChildren ? row.expanded : null"
+      [attr.aria-selected]="row.hasChildren ? null : row.node.id === selectedId()"
+      [attr.tabindex]="row.node.id === tabStopId() ? 0 : -1"
+      [style.padding-inline-start.rem]="(row.level - 1) * 1.25 + 0.5"
+      (focus)="rememberFocus(row.node.id)"
+      (click)="activate(row, index)"
+      (keydown)="handleKey($event, row, index)"
+    >
+      <span class="w-4 shrink-0 text-muted-foreground" aria-hidden="true">
+        {{ row.hasChildren ? (row.expanded ? '▾' : '▸') : '' }}
+      </span>
+      <span class="min-w-0 wrap-anywhere">{{ row.node.label }}</span>
+    </li>
+  }
+</ul>

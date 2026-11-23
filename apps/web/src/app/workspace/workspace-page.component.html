@@ -1,0 +1,67 @@
+<div class="workspace">
+  <header class="workspace-header">
+    <h1 class="m-0 text-base font-semibold">CodeRoom</h1>
+    <form class="project-picker" (submit)="$event.preventDefault(); openProject(projectInput.valueAsNumber)">
+      <label for="workspace-project">Проект</label>
+      <input
+        #projectInput
+        id="workspace-project"
+        class="project-input"
+        type="number"
+        min="1"
+        max="2147483647"
+        step="1"
+        required
+        [value]="projectId() ?? ''"
+      />
+      <button hlmBtn variant="outline" size="sm" type="submit">Открыть</button>
+    </form>
+  </header>
+
+  <aside class="explorer" aria-labelledby="explorer-title">
+    <h2 id="explorer-title" class="explorer-title">Файлы</h2>
+    @if (loadingFiles()) {
+      <p class="panel-message" role="status">Загрузка файлов…</p>
+    } @else if (filesError(); as error) {
+      <p class="panel-message text-destructive" role="alert">{{ error }}</p>
+    } @else if (files().length) {
+      <app-file-tree
+        [files]="files()"
+        [selectedId]="selection()?.file?.id ?? null"
+        (fileSelected)="selectFile($event)"
+      />
+    } @else {
+      <p class="panel-message">В проекте пока нет файлов.</p>
+    }
+  </aside>
+
+  <main class="editor-pane" aria-label="Редактор">
+    <div class="editor-header">
+      <span class="truncate" [title]="selection()?.file?.path ?? ''">
+        {{ selection()?.file?.path ?? 'Редактор' }}
+      </span>
+      @if (opened() && connection.status() === 'connected') {
+        <span class="text-xs text-muted-foreground">Подключено</span>
+      }
+    </div>
+
+    @if (switchingFile() && selection()) {
+      <p class="panel-message" role="status">Загрузка документа…</p>
+    } @else if (opened() && connection.status() === 'connected' && connection.text; as text) {
+      @if (connection.error(); as error) {
+        <p class="panel-message text-destructive" role="alert">{{ error }}</p>
+      }
+      <div class="editor-content">
+        @for (documentText of [text]; track documentText) {
+          <app-collaborative-editor [text]="documentText" />
+        }
+      </div>
+    } @else if (selection()) {
+      <p class="panel-message text-destructive" role="alert">
+        {{ fileError() ?? connection.error() ?? 'Соединение с документом закрыто.' }}
+      </p>
+    } @else {
+      <p class="panel-message">Выбери файл в дереве.</p>
+    }
+  </main>
+</div>
