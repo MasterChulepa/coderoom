@@ -4,11 +4,14 @@ using Microsoft.EntityFrameworkCore;
 using CodeRoom.Api.ProjectFiles;
 using CodeRoom.Api.Projects;
 using CodeRoom.Api.Collaboration;
+using CodeRoom.Api.Auth.Models;
+
 public class CodeRoomDbContext(DbContextOptions<CodeRoomDbContext> options) : DbContext(options)
 {
     public DbSet<Project> Projects { get; set; }
     public DbSet<ProjectFile> ProjectFiles { get; set; }
     public DbSet<CollaborativeDocumentUpdate> CollaborativeDocumentUpdates { get; set; }
+    public DbSet<Guest> Guests { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

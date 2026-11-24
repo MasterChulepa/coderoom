@@ -1,3 +1,4 @@
+using CodeRoom.Api.Auth.Models;
 using CodeRoom.Api.ProjectFiles;
 
 namespace CodeRoom.Api.Projects;

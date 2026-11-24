@@ -6,6 +6,8 @@ using CodeRoom.Api.ProjectFiles.Services;
 using CodeRoom.Api.Projects.Services;
 using CodeRoom.Api.Collaboration;
 using CodeRoom.Api.Collaboration.Services;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using CodeRoom.Api.Auth.Services;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -16,6 +18,7 @@ builder.Services.AddControllers();
 builder.Services.AddScoped<IProjectService, ProjectService>();
 builder.Services.AddScoped<IProjectFileService, ProjectFileService>();
 builder.Services.AddScoped<ICollaborativeDocumentService, CollaborativeDocumentService>();
+builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddDbContext<CodeRoomDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 
@@ -26,6 +29,13 @@ builder.Services
     .AddExceptionHandler<ProjectAlreadyExistsExceptionHandler>()
     .AddExceptionHandler<ProjectFileAlreadyExistsExceptionHandler>();
 builder.Services.AddSignalR();
+
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.ExpireTimeSpan = TimeSpan.FromMinutes(20);
+        options.SlidingExpiration = true;
+    });
 
 var app = builder.Build();
 app.UseExceptionHandler();
