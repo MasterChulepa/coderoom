@@ -1,6 +1,7 @@
 using CodeRoom.Api.Auth.Models;
 using CodeRoom.Api.Data;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace CodeRoom.Api.Auth.Services;
 
@@ -12,5 +13,11 @@ public class AuthService(CodeRoomDbContext _dbContext) : IAuthService
         _dbContext.Guests.Add(guest);
         await _dbContext.SaveChangesAsync(cancellationToken);
         return guest.Id;
+    }
+
+    public async Task<bool> GuestExistsAsync(int id, CancellationToken cancellationToken)
+    {
+        var guest = await _dbContext.Guests.FindAsync(id, cancellationToken);
+        return guest is not null;
     }
 }

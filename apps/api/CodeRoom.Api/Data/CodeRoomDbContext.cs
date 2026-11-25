@@ -12,6 +12,7 @@ public class CodeRoomDbContext(DbContextOptions<CodeRoomDbContext> options) : Db
     public DbSet<ProjectFile> ProjectFiles { get; set; }
     public DbSet<CollaborativeDocumentUpdate> CollaborativeDocumentUpdates { get; set; }
     public DbSet<Guest> Guests { get; set; }
+    public DbSet<ProjectMember> ProjectMembers { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -20,6 +21,11 @@ public class CodeRoomDbContext(DbContextOptions<CodeRoomDbContext> options) : Db
         modelBuilder.Entity<Project>()
             .HasIndex(p => p.Name)
             .IsUnique();
+
+        modelBuilder.Entity<Project>()
+            .HasMany(p => p.Guests)
+            .WithMany(g => g.Projects)
+            .UsingEntity<ProjectMember>();
 
         modelBuilder.Entity<ProjectFile>()
             .HasIndex(pf => new { pf.ProjectId, pf.Path })

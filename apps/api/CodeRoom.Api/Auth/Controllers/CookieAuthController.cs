@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using CodeRoom.Api.Auth.Models;
 using CodeRoom.Api.Auth.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -12,7 +13,25 @@ namespace CodeRoom.Api.Auth.Controllers;
 public class CookieAuthController(IAuthService authService) : ControllerBase
 {
     [HttpPost(Name = "SignInGuest")]
-    public async Task<IActionResult> SignInGuestAsync(CancellationToken cancellationToken)
+    public async Task<IActionResult> EnsureGuestSessionAsync(CancellationToken cancellationToken)
+    {
+
+        if (User.Identity?.IsAuthenticated == true)
+        {
+            var guestIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+            if (int.TryParse(guestIdClaim, out var guestId)
+                && await authService.GuestExistsAsync(guestId, cancellationToken))
+            {
+                return NoContent();
+            }
+
+        }
+        await SignInNewGuestAsync(cancellationToken);
+        return NoContent();
+    }
+
+    private async Task SignInNewGuestAsync(CancellationToken cancellationToken)
     {
         var guestId = await authService.CreateGuestAsync(cancellationToken);
         var claims = new List<Claim>
@@ -25,6 +44,6 @@ public class CookieAuthController(IAuthService authService) : ControllerBase
         var authProperties = new AuthenticationProperties { };
         await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme,
          new ClaimsPrincipal(claimsIdentity), authProperties);
-        return NoContent();
     }
+
 }

@@ -8,4 +8,5 @@ public class Project
     public int Id { get; set; }
     public required string Name { get; set; }
     public ICollection<ProjectFile> ProjectFiles { get; set; } = [];
+    public ICollection<Guest> Guests { get; } = [];
 }

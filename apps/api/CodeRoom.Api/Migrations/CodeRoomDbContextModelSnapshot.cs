@@ -114,6 +114,28 @@ namespace CodeRoom.Api.Migrations
                     b.ToTable("Projects");
                 });
 
+            modelBuilder.Entity("CodeRoom.Api.Projects.ProjectMember", b =>
+                {
+                    b.Property<int>("GuestId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ProjectId")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Role")
+                        .HasColumnType("integer");
+
+                    b.HasKey("GuestId", "ProjectId");
+
+                    b.HasIndex("ProjectId");
+
+                    b.ToTable("ProjectMembers");
+                });
+
             modelBuilder.Entity("CodeRoom.Api.Collaboration.CollaborativeDocumentUpdate", b =>
                 {
                     b.HasOne("CodeRoom.Api.ProjectFiles.ProjectFile", "ProjectFile")
@@ -134,6 +156,21 @@ namespace CodeRoom.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Project");
+                });
+
+            modelBuilder.Entity("CodeRoom.Api.Projects.ProjectMember", b =>
+                {
+                    b.HasOne("CodeRoom.Api.Auth.Models.Guest", null)
+                        .WithMany()
+                        .HasForeignKey("GuestId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("CodeRoom.Api.Projects.Project", null)
+                        .WithMany()
+                        .HasForeignKey("ProjectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("CodeRoom.Api.ProjectFiles.ProjectFile", b =>
