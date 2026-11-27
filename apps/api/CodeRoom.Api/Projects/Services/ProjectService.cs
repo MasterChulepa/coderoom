@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using CodeRoom.Api.Projects.Exceptions;
 using Npgsql;
 using CodeRoom.Api.Projects.Dtos;
+using CodeRoom.Api.Projects.Models;
 
 
 namespace CodeRoom.Api.Projects.Services;
@@ -14,11 +15,12 @@ public class ProjectService(CodeRoomDbContext _dbContext) : IProjectService
         return _dbContext.Projects.AsNoTracking().ToArrayAsync(cancellationToken);
     }
 
-    public async Task<Project> CreateProjectAsync(CreateProjectRequest request, CancellationToken cancellationToken)
+    public async Task<Project> CreateProjectAsync(CreateProjectRequest request, int guestId, CancellationToken cancellationToken)
     {
         var projectName = request.Name.Trim();
         var newProject = new Project { Name = projectName };
         _dbContext.Projects.Add(newProject);
+        AddProjectOwner(newProject, guestId, request.DisplayName);
         await SaveProjectChangesAsync(projectName, cancellationToken);
         return newProject;
     }
@@ -68,5 +70,17 @@ public class ProjectService(CodeRoomDbContext _dbContext) : IProjectService
         {
             throw new ProjectAlreadyExistsException(name, ex);
         }
+    }
+
+    private void AddProjectOwner(Project project, int guestId, string ownerName)
+    {
+        var pm = new ProjectMember
+        {
+            GuestId = guestId,
+            DisplayName = ownerName.Trim(),
+            Role = Roles.Owner,
+            Project = project,
+        };
+        _dbContext.ProjectMembers.Add(pm);
     }
 }

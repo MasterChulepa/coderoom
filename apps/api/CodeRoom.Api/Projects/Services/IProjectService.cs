@@ -6,7 +6,7 @@ public interface IProjectService
 {
     Task<Project[]> GetProjectsAsync(CancellationToken cancellationToken);
 
-    Task<Project> CreateProjectAsync(CreateProjectRequest request, CancellationToken cancellationToken);
+    Task<Project> CreateProjectAsync(CreateProjectRequest request, int guestId, CancellationToken cancellationToken);
 
     Task<Project?> GetProjectByIdAsync(int id, CancellationToken cancellationToken);
 

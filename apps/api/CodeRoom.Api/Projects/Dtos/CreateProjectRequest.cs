@@ -7,4 +7,8 @@ public class CreateProjectRequest
     [Required]
     [StringLength(100, MinimumLength = 1)]
     public required string Name { get; set; }
+
+    [Required]
+    [StringLength(100, MinimumLength = 1)]
+    public required string DisplayName { get; set; }
 }
