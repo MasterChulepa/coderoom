@@ -1,7 +1,5 @@
 using CodeRoom.Api.Auth.Models;
 using CodeRoom.Api.Data;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace CodeRoom.Api.Auth.Services;
 

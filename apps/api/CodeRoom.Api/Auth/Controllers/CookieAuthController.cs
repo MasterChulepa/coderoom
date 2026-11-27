@@ -19,8 +19,7 @@ public class CookieAuthController(IAuthService authService) : ControllerBase
         {
             var guestIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
-            if (int.TryParse(guestIdClaim, out var guestId)
-                && await authService.GuestExistsAsync(guestId, cancellationToken))
+            if (int.TryParse(guestIdClaim, out var _))
             {
                 return NoContent();
             }

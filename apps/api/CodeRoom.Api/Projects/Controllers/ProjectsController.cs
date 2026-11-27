@@ -1,15 +1,15 @@
 using Microsoft.AspNetCore.Mvc;
 using CodeRoom.Api.Projects.Dtos;
 using CodeRoom.Api.Projects.Services;
+using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
-using CodeRoom.Api.Auth.Services;
 
 namespace CodeRoom.Api.Projects.Controllers;
 
 [ApiController]
 [Route("api/projects")]
 
-public class ProjectsController(IProjectService _projectService, IAuthService _authService) : ControllerBase
+public class ProjectsController(IProjectService _projectService) : ControllerBase
 {
     [HttpGet(Name = "GetProjects")]
     public async Task<ProjectResponse[]> Get(CancellationToken cancellationToken)
@@ -29,19 +29,18 @@ public class ProjectsController(IProjectService _projectService, IAuthService _a
         return Ok(new ProjectResponse { Id = project.Id, Name = project.Name });
     }
 
+    [Authorize(Policy = "Guest")]
     [HttpPost(Name = "CreateProject")]
     public async Task<ActionResult<ProjectResponse>> Create(CreateProjectRequest request, CancellationToken cancellationToken)
     {
-        string? guestIdClaim;
-        if (User.Identity?.IsAuthenticated == true)
+
+        var guestIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (int.TryParse(guestIdClaim, out var guestId))
         {
-            guestIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (int.TryParse(guestIdClaim, out var guestId) && await _authService.GuestExistsAsync(guestId, cancellationToken))
-            {
-                var project = await _projectService.CreateProjectAsync(request, guestId, cancellationToken);
-                return CreatedAtAction(nameof(GetProject), new { id = project.Id }, new ProjectResponse { Id = project.Id, Name = project.Name });
-            }
+            var project = await _projectService.CreateProjectAsync(request, guestId, cancellationToken);
+            return CreatedAtAction(nameof(GetProject), new { id = project.Id }, new ProjectResponse { Id = project.Id, Name = project.Name });
         }
+
         return Unauthorized();
     }
 
