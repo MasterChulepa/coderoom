@@ -12,25 +12,25 @@ namespace CodeRoom.Api.Projects.Controllers;
 public class ProjectsController(IProjectService _projectService, IAuthService _authService) : ControllerBase
 {
     [HttpGet(Name = "GetProjects")]
-    public async Task<Project[]> Get(CancellationToken cancellationToken)
+    public async Task<ProjectResponse[]> Get(CancellationToken cancellationToken)
     {
         var projects = await _projectService.GetProjectsAsync(cancellationToken);
-        return projects;
+        return [.. projects.Select(p => new ProjectResponse { Id = p.Id, Name = p.Name })];
     }
 
     [HttpGet("{id}", Name = "GetProject")]
-    public async Task<ActionResult<Project>> GetProject(int id, CancellationToken cancellationToken)
+    public async Task<ActionResult<ProjectResponse>> GetProject(int id, CancellationToken cancellationToken)
     {
         var project = await _projectService.GetProjectByIdAsync(id, cancellationToken);
         if (project is null)
         {
             return NotFound();
         }
-        return Ok(project);
+        return Ok(new ProjectResponse { Id = project.Id, Name = project.Name });
     }
 
     [HttpPost(Name = "CreateProject")]
-    public async Task<ActionResult<Project>> Create(CreateProjectRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<ProjectResponse>> Create(CreateProjectRequest request, CancellationToken cancellationToken)
     {
         string? guestIdClaim;
         if (User.Identity?.IsAuthenticated == true)
@@ -39,7 +39,7 @@ public class ProjectsController(IProjectService _projectService, IAuthService _a
             if (int.TryParse(guestIdClaim, out var guestId) && await _authService.GuestExistsAsync(guestId, cancellationToken))
             {
                 var project = await _projectService.CreateProjectAsync(request, guestId, cancellationToken);
-                return CreatedAtAction(nameof(GetProject), new { id = project.Id }, project);
+                return CreatedAtAction(nameof(GetProject), new { id = project.Id }, new ProjectResponse { Id = project.Id, Name = project.Name });
             }
         }
         return Unauthorized();
@@ -47,14 +47,14 @@ public class ProjectsController(IProjectService _projectService, IAuthService _a
 
 
     [HttpPut("{id}", Name = "UpdateProject")]
-    public async Task<ActionResult<Project>> Update(int id, UpdateProjectRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<ProjectResponse>> Update(int id, UpdateProjectRequest request, CancellationToken cancellationToken)
     {
         var project = await _projectService.UpdateProjectAsync(id, request, cancellationToken);
         if (project is null)
         {
             return NotFound();
         }
-        return Ok(project);
+        return Ok(new ProjectResponse { Id = project.Id, Name = project.Name });
     }
 
     [HttpDelete("{id}", Name = "DeleteProject")]

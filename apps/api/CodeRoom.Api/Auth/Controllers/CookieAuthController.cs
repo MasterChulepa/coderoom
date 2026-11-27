@@ -1,5 +1,4 @@
 using System.Security.Claims;
-using CodeRoom.Api.Auth.Models;
 using CodeRoom.Api.Auth.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;

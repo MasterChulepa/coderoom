@@ -3,7 +3,7 @@ using System.Net.Http.Json;
 using CodeRoom.Api.Projects;
 using CodeRoom.Api.Projects.Dtos;
 using Microsoft.AspNetCore.Mvc;
-using Org.BouncyCastle.Crypto;
+using Microsoft.Net.Http.Headers;
 namespace CodeRoom.Api.IntegrationTests;
 
 public class ProjectsApiTests(CodeRoomApiFixture apiFixture) : IClassFixture<CodeRoomApiFixture>
@@ -14,7 +14,7 @@ public class ProjectsApiTests(CodeRoomApiFixture apiFixture) : IClassFixture<Cod
 
         using var response = await CreateProjectAsync(" Test Project ");
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        var readProject = await response.Content.ReadFromJsonAsync<Project>();
+        var readProject = await response.Content.ReadFromJsonAsync<ProjectResponse>();
         Assert.NotNull(readProject);
         Assert.Equal("Test Project", readProject!.Name);
         Assert.True(readProject.Id > 0);
@@ -95,12 +95,12 @@ public class ProjectsApiTests(CodeRoomApiFixture apiFixture) : IClassFixture<Cod
         var projectName = $"Test Project {Guid.NewGuid():N}";
         using var setupResponse = await CreateProjectAsync(projectName);
         Assert.Equal(HttpStatusCode.Created, setupResponse.StatusCode);
-        var createdProject = await setupResponse.Content.ReadFromJsonAsync<Project>();
+        var createdProject = await setupResponse.Content.ReadFromJsonAsync<ProjectResponse>();
         Assert.NotNull(createdProject);
 
         using var response = await apiFixture.Client.GetAsync($"/api/projects/{createdProject!.Id}");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var readProject = await response.Content.ReadFromJsonAsync<Project>();
+        var readProject = await response.Content.ReadFromJsonAsync<ProjectResponse>();
         Assert.NotNull(readProject);
         Assert.Equal(createdProject.Id, readProject!.Id);
         Assert.Equal(createdProject.Name, readProject.Name);
@@ -120,13 +120,13 @@ public class ProjectsApiTests(CodeRoomApiFixture apiFixture) : IClassFixture<Cod
         var projectName = $"Test Project {Guid.NewGuid():N}";
         using var setupResponse = await CreateProjectAsync(projectName);
         Assert.Equal(HttpStatusCode.Created, setupResponse.StatusCode);
-        var createdProject = await setupResponse.Content.ReadFromJsonAsync<Project>();
+        var createdProject = await setupResponse.Content.ReadFromJsonAsync<ProjectResponse>();
         Assert.NotNull(createdProject);
 
         var updatedName = $"Updated Project {Guid.NewGuid():N}";
         using var response = await apiFixture.Client.PutAsJsonAsync($"/api/projects/{createdProject!.Id}", new UpdateProjectRequest { Name = updatedName });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var updatedProject = await response.Content.ReadFromJsonAsync<Project>();
+        var updatedProject = await response.Content.ReadFromJsonAsync<ProjectResponse>();
         Assert.NotNull(updatedProject);
         Assert.Equal(createdProject.Id, updatedProject!.Id);
         Assert.Equal(updatedName, updatedProject.Name);
@@ -138,7 +138,7 @@ public class ProjectsApiTests(CodeRoomApiFixture apiFixture) : IClassFixture<Cod
         var projectName = $"Test Project {Guid.NewGuid():N}";
         using var setupResponse = await CreateProjectAsync(projectName);
         Assert.Equal(HttpStatusCode.Created, setupResponse.StatusCode);
-        var createdProject = await setupResponse.Content.ReadFromJsonAsync<Project>();
+        var createdProject = await setupResponse.Content.ReadFromJsonAsync<ProjectResponse>();
         Assert.NotNull(createdProject);
 
         using var response = await apiFixture.Client.PutAsJsonAsync($"/api/projects/{createdProject!.Id}", new UpdateProjectRequest { Name = "" });
@@ -157,19 +157,19 @@ public class ProjectsApiTests(CodeRoomApiFixture apiFixture) : IClassFixture<Cod
 
         using var setupResponse1 = await CreateProjectAsync(projectName1);
         Assert.Equal(HttpStatusCode.Created, setupResponse1.StatusCode);
-        var createdProject1 = await setupResponse1.Content.ReadFromJsonAsync<Project>();
+        var createdProject1 = await setupResponse1.Content.ReadFromJsonAsync<ProjectResponse>();
         Assert.NotNull(createdProject1);
 
-        using var setupResponse2 = await CreateProjectAsync(projectName2); ;
+        using var setupResponse2 = await CreateProjectAsync(projectName2);
         Assert.Equal(HttpStatusCode.Created, setupResponse2.StatusCode);
-        var createdProject2 = await setupResponse2.Content.ReadFromJsonAsync<Project>();
+        var createdProject2 = await setupResponse2.Content.ReadFromJsonAsync<ProjectResponse>();
         Assert.NotNull(createdProject2);
 
         using var response = await apiFixture.Client.PutAsJsonAsync($"/api/projects/{createdProject2!.Id}", new UpdateProjectRequest { Name = projectName1 });
         var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
 
         using var projectResponse = await apiFixture.Client.GetAsync($"/api/projects/{createdProject2!.Id}");
-        var project = await projectResponse.Content.ReadFromJsonAsync<Project>();
+        var project = await projectResponse.Content.ReadFromJsonAsync<ProjectResponse>();
         Assert.NotNull(problem);
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.Equal((int)HttpStatusCode.Conflict, problem.Status);
@@ -192,9 +192,9 @@ public class ProjectsApiTests(CodeRoomApiFixture apiFixture) : IClassFixture<Cod
     public async Task DeleteProject_ReturnsNoContent_WhenProjectExists()
     {
         var projectName = $"Test Project {Guid.NewGuid():N}";
-        using var setupResponse = await CreateProjectAsync(projectName); ;
+        using var setupResponse = await CreateProjectAsync(projectName);
         Assert.Equal(HttpStatusCode.Created, setupResponse.StatusCode);
-        var createdProject = await setupResponse.Content.ReadFromJsonAsync<Project>();
+        var createdProject = await setupResponse.Content.ReadFromJsonAsync<ProjectResponse>();
         Assert.NotNull(createdProject);
 
         using var response = await apiFixture.Client.DeleteAsync($"/api/projects/{createdProject!.Id}");
@@ -207,7 +207,8 @@ public class ProjectsApiTests(CodeRoomApiFixture apiFixture) : IClassFixture<Cod
     private async Task<HttpResponseMessage> CreateProjectAsync(string projectName)
     {
         var httpClient = apiFixture.Client;
-        await httpClient.PostAsJsonAsync("/api/guest-session", new { });
+        using var sessionResponse = await httpClient.PostAsJsonAsync("/api/guest-session", new { });
+        Assert.Equal(HttpStatusCode.NoContent, sessionResponse.StatusCode);
         return await httpClient.PostAsJsonAsync("/api/projects", new CreateProjectRequest { Name = projectName, DisplayName = "Owner" });
     }
 }
